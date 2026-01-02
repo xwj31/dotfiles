@@ -19,7 +19,9 @@ function gc --description "Git commit with Conventional Commits message"
 
     # Check if in a git repo
     if not git rev-parse --git-dir >/dev/null 2>&1
+        set_color red
         echo "Error: Not in a git repository"
+        set_color normal
         return 1
     end
 
@@ -30,7 +32,9 @@ function gc --description "Git commit with Conventional Commits message"
 
     # Check if anything is staged
     if test -z "$added" -a -z "$modified" -a -z "$deleted"
+        set_color red
         echo "Error: No staged changes"
+        set_color normal
         echo "Stage files with: git add <files>"
         return 1
     end
@@ -151,20 +155,46 @@ function gc --description "Git commit with Conventional Commits message"
     end
 
     # Show staged files
+    set_color --bold
     echo "Staged:"
+    set_color normal
     for f in $added
+        set_color green
         echo "  + $f (new)"
     end
     for f in $modified
+        set_color yellow
         echo "  ~ $f (modified)"
     end
     for f in $deleted
+        set_color red
         echo "  - $f (deleted)"
     end
+    set_color normal
     echo ""
 
     # Show preview and confirm
-    echo "Commit message: \"$commit_msg\""
+    echo -n "Commit message: \""
+    set_color cyan
+    echo -n "$commit_type"
+    if test -n "$scope"
+        set_color normal
+        echo -n "("
+        set_color magenta
+        echo -n "$scope"
+        set_color normal
+        echo -n ")"
+    end
+    if test -n "$breaking_mark"
+        set_color red
+        echo -n "!"
+    end
+    set_color normal
+    echo -n ": "
+    set_color --bold
+    echo -n "$description"
+    set_color normal
+    echo "\""
     read -l -P "Proceed? [Y/n/e(dit)] " confirm
 
     switch $confirm
@@ -188,7 +218,9 @@ function gc --description "Git commit with Conventional Commits message"
                 end
             end
         case '*'
+            set_color yellow
             echo "Aborted"
+            set_color normal
             return 1
     end
 end
