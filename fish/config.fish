@@ -124,8 +124,7 @@ alias nk "npx npkill"
 # ===========================
 # Git Aliases
 # ===========================
-alias gs "git status"
-alias gst "git status"  # You had both gs and gst
+alias gst "git status" 
 alias g- "git checkout -"
 alias gpl "git pull"
 alias gpu "git push"
