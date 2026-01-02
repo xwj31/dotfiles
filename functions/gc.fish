@@ -100,44 +100,81 @@ function gc --description "Git commit with Conventional Commits message"
         end
     end
 
-    # Extract scope from file paths
-    set -l scope ""
-    set -l primary_file $all_files[1]
+    # Extract meaningful scopes from all file paths
+    set -l scopes
+    set -l skip_dirs "src" "." ".." "lib" "app" "packages"
 
-    # Try to get meaningful scope from path
-    set -l path_parts (string split '/' -- $primary_file)
-    if test (count $path_parts) -gt 1
-        # Skip src/ and look for meaningful folder
+    for f in $all_files
+        set -l path_parts (string split '/' -- $f)
         for part in $path_parts
-            if test "$part" != "src" -a "$part" != "." -a "$part" != ".."
-                # Check if it's a folder (not the file itself)
-                if not string match -qr '\.' -- $part
-                    set scope (string lower -- $part)
-                    break
-                end
+            # Skip common non-meaningful directories and files
+            if contains -- $part $skip_dirs; or string match -qr '\.' -- $part
+                continue
             end
+            # Found a meaningful scope
+            set -l scope_lower (string lower -- $part)
+            if not contains -- $scope_lower $scopes
+                set scopes $scopes $scope_lower
+            end
+            break
         end
     end
 
-    # Extract description from primary file
-    set -l basename (string replace -r '.*/' '' -- $primary_file)
-    set -l description (string replace -r '\.[^.]+$' '' -- $basename)
-    set description (string lower -- $description)
-    set description (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $description)
+    # Build scope string (limit to 2 scopes for readability)
+    set -l scope ""
+    if test (count $scopes) -eq 1
+        set scope $scopes[1]
+    else if test (count $scopes) -eq 2
+        set scope "$scopes[1],$scopes[2]"
+    else if test (count $scopes) -gt 2
+        set scope "$scopes[1],$scopes[2]"
+    end
 
-    # If multiple files in same dir, use that context
-    if test (count $all_files) -gt 1
-        set -l dirs
+    # Build description based on changed files
+    set -l description ""
+    set -l file_count (count $all_files)
+
+    if test $file_count -eq 1
+        # Single file: use filename
+        set -l basename (string replace -r '.*/' '' -- $all_files[1])
+        set description (string replace -r '\.[^.]+$' '' -- $basename)
+        set description (string lower -- $description)
+        set description (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $description)
+    else
+        # Multiple files: extract meaningful names
+        set -l file_names
         for f in $all_files
-            set -l dir (string replace -r '/[^/]+$' '' -- $f)
-            set dirs $dirs $dir
-        end
-        set -l unique_dirs (printf '%s\n' $dirs | sort -u)
-        if test (count $unique_dirs) -eq 1
-            set -l dir_name (string replace -r '.*/' '' -- $unique_dirs[1])
-            if test "$dir_name" != "src" -a "$dir_name" != "."
-                set description (string lower -- $dir_name)
+            set -l basename (string replace -r '.*/' '' -- $f)
+            set -l name (string replace -r '\.[^.]+$' '' -- $basename)
+            set name (string lower -- $name)
+            set name (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $name)
+            # Skip generic names
+            if test "$name" != "index" -a "$name" != "types" -a "$name" != "utils"
+                if not contains -- $name $file_names
+                    set file_names $file_names $name
+                end
             end
+        end
+
+        # Try to find common theme from diff
+        set -l added_funcs (git diff --cached 2>/dev/null | string match -r '^\+.*(?:function|const|def|fn)\s+(\w+)' | string replace -r '.*(?:function|const|def|fn)\s+' '' | head -3)
+
+        if test (count $file_names) -eq 1
+            set description "$file_names[1]"
+        else if test (count $file_names) -eq 2
+            set description "$file_names[1] and $file_names[2]"
+        else if test (count $file_names) -gt 2
+            # Summarize by area or list first two
+            if test (count $scopes) -eq 1
+                set description "$scopes[1] updates"
+            else
+                set description "$file_names[1] and $file_names[2]"
+            end
+        else if test (count $scopes) -gt 0
+            # All generic names, use scope-based description
+            set description "$scopes[1] updates"
+        else
+            set description "multiple files"
         end
     end
 
