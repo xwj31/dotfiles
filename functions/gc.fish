@@ -1,10 +1,20 @@
-function gc --description "Git commit with auto-generated message"
-    # Show help
-    if test "$argv[1]" = "--help" -o "$argv[1]" = "-h"
-        echo "Usage: gc"
-        echo "Auto-generates a commit message based on staged changes"
-        echo "Prefixes: add: (new files), rm: (deleted), fix:/update: (modified)"
-        return 0
+function gc --description "Git commit with Conventional Commits message"
+    # Parse arguments
+    set -l breaking false
+    for arg in $argv
+        switch $arg
+            case -b --breaking
+                set breaking true
+            case -h --help
+                echo "Usage: gc [-b|--breaking]"
+                echo "Auto-generates a Conventional Commits message"
+                echo ""
+                echo "Options:"
+                echo "  -b, --breaking  Mark as breaking change (adds !)"
+                echo ""
+                echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore"
+                return 0
+        end
     end
 
     # Check if in a git repo
@@ -25,10 +35,8 @@ function gc --description "Git commit with auto-generated message"
         return 1
     end
 
-    # Determine prefix
-    set -l prefix ""
+    # Collect all files
     set -l all_files
-
     if test -n "$added"
         set all_files $all_files $added
     end
@@ -39,76 +47,108 @@ function gc --description "Git commit with auto-generated message"
         set all_files $all_files $deleted
     end
 
+    # Get diff content for smart detection
+    set -l diff_content (git diff --cached 2>/dev/null | string lower)
+    set -l files_lower (string lower -- $all_files | string join ' ')
+
+    # Determine type using Conventional Commits
+    set -l commit_type ""
+
     if test -n "$deleted" -a -z "$added" -a -z "$modified"
         # Only deletions
-        set prefix "rm"
+        set commit_type "chore"
     else if test -n "$added" -a -z "$modified" -a -z "$deleted"
-        # Only new files
-        set prefix "add"
-    else if test -n "$modified" -a -z "$added" -a -z "$deleted"
-        # Only modifications - smart detect
-        set -l diff_content (git diff --cached 2>/dev/null | string lower)
-        if string match -qr '(fix|bug|error|issue|patch|correct)' -- $diff_content
-            set prefix "fix"
+        # Only new files - check what kind
+        if string match -qr '(test|spec)' -- $files_lower
+            set commit_type "test"
+        else if string match -qr '(readme|docs|\.md)' -- $files_lower
+            set commit_type "docs"
         else
-            set prefix "update"
+            set commit_type "feat"
         end
     else
-        # Mixed changes - determine by what's dominant
-        set -l add_count (count $added)
-        set -l mod_count (count $modified)
-        set -l del_count (count $deleted)
-
-        if test $add_count -ge $mod_count -a $add_count -ge $del_count
-            set prefix "add"
-        else if test $del_count -ge $add_count -a $del_count -ge $mod_count
-            set prefix "rm"
+        # Modified or mixed - smart detect from diff content and files
+        if string match -qr '(fix|bug|error|issue|patch|correct|crash|fail)' -- $diff_content
+            set commit_type "fix"
+        else if string match -qr '(refactor|rename|move|extract|restructur)' -- $diff_content
+            set commit_type "refactor"
+        else if string match -qr '(docs|comment|readme|documentation)' -- $diff_content $files_lower
+            set commit_type "docs"
+        else if string match -qr '(test|spec|jest|vitest|mocha)' -- $files_lower
+            set commit_type "test"
+        else if string match -qr '(style|format|lint|prettier|eslint)' -- $diff_content $files_lower
+            set commit_type "style"
+        else if string match -qr '(perf|optimi|speed|fast|slow|cache)' -- $diff_content
+            set commit_type "perf"
+        else if string match -qr '(build|webpack|vite|rollup|esbuild|package\.json|tsconfig)' -- $files_lower
+            set commit_type "build"
+        else if string match -qr '(ci|workflow|github/|\.yml|jenkins|travis)' -- $files_lower
+            set commit_type "ci"
+        else if string match -qr '(chore|cleanup|maintain|updat|bump|version)' -- $diff_content
+            set commit_type "chore"
         else
-            # Check diff for fix indicators
-            set -l diff_content (git diff --cached 2>/dev/null | string lower)
-            if string match -qr '(fix|bug|error|issue|patch|correct)' -- $diff_content
-                set prefix "fix"
+            # Default based on change type
+            if test -n "$added"
+                set commit_type "feat"
             else
-                set prefix "update"
+                set commit_type "refactor"
             end
         end
     end
 
-    # Extract feature name from files
-    set -l feature_name ""
-
-    # Get the first meaningful file and extract feature name
+    # Extract scope from file paths
+    set -l scope ""
     set -l primary_file $all_files[1]
 
-    # Strip path and extension to get feature name
+    # Try to get meaningful scope from path
+    set -l path_parts (string split '/' -- $primary_file)
+    if test (count $path_parts) -gt 1
+        # Skip src/ and look for meaningful folder
+        for part in $path_parts
+            if test "$part" != "src" -a "$part" != "." -a "$part" != ".."
+                # Check if it's a folder (not the file itself)
+                if not string match -qr '\.' -- $part
+                    set scope (string lower -- $part)
+                    break
+                end
+            end
+        end
+    end
+
+    # Extract description from primary file
     set -l basename (string replace -r '.*/' '' -- $primary_file)
-    set -l name_without_ext (string replace -r '\.[^.]+$' '' -- $basename)
+    set -l description (string replace -r '\.[^.]+$' '' -- $basename)
+    set description (string lower -- $description)
+    set description (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $description)
 
-    # Convert to lowercase and clean up common suffixes
-    set feature_name (string lower -- $name_without_ext)
-    set feature_name (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $feature_name)
-
-    # If multiple files, try to find common pattern or just use first
+    # If multiple files in same dir, use that context
     if test (count $all_files) -gt 1
-        # Check if files share a common directory or pattern
         set -l dirs
         for f in $all_files
             set -l dir (string replace -r '/[^/]+$' '' -- $f)
             set dirs $dirs $dir
         end
-
-        # If all in same directory, use that as context
         set -l unique_dirs (printf '%s\n' $dirs | sort -u)
         if test (count $unique_dirs) -eq 1
             set -l dir_name (string replace -r '.*/' '' -- $unique_dirs[1])
             if test "$dir_name" != "src" -a "$dir_name" != "."
-                set feature_name (string lower -- $dir_name)
+                set description (string lower -- $dir_name)
             end
         end
     end
 
-    # Build the commit message
-    set -l commit_msg "$prefix: $feature_name"
+    # Build commit message
+    set -l breaking_mark ""
+    if test "$breaking" = true
+        set breaking_mark "!"
+    end
+
+    set -l commit_msg ""
+    if test -n "$scope"
+        set commit_msg "$commit_type($scope)$breaking_mark: $description"
+    else
+        set commit_msg "$commit_type$breaking_mark: $description"
+    end
 
     # Show staged files
     echo "Staged:"
@@ -132,11 +172,20 @@ function gc --description "Git commit with auto-generated message"
             git commit -m "$commit_msg"
         case e E
             # Let user edit the message
-            read -l -P "Enter message: $prefix: " custom_msg
-            if test -n "$custom_msg"
-                git commit -m "$prefix: $custom_msg"
+            if test -n "$scope"
+                read -l -P "Enter message: $commit_type($scope)$breaking_mark: " custom_msg
+                if test -n "$custom_msg"
+                    git commit -m "$commit_type($scope)$breaking_mark: $custom_msg"
+                else
+                    git commit -m "$commit_msg"
+                end
             else
-                git commit -m "$commit_msg"
+                read -l -P "Enter message: $commit_type$breaking_mark: " custom_msg
+                if test -n "$custom_msg"
+                    git commit -m "$commit_type$breaking_mark: $custom_msg"
+                else
+                    git commit -m "$commit_msg"
+                end
             end
         case '*'
             echo "Aborted"
