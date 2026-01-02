@@ -9,11 +9,13 @@ My dotfiles.
 Git commit helper that auto-generates [Conventional Commits](https://www.conventionalcommits.org/) messages based on staged changes.
 
 **Usage:**
-```
+
+```bash
 gc [-b|--breaking]
 ```
 
 **Options:**
+
 - `-b, --breaking` - Mark as a breaking change (adds `!` to the commit type)
 - `-h, --help` - Show help
 
