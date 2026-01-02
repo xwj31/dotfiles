@@ -71,6 +71,10 @@ function test_scope_extraction
     # Test 6: Workers nested path
     set -l result (_gc_extract_scopes "workers/reddit-api-worker/src/routes/feed.ts")
     assert_eq "workers" "$result" "Nested workers path → scope 'workers'"
+
+    # Test 7: Many files across 4 areas (should limit to first 2)
+    set -l result (_gc_extract_scopes "src/hooks/useReadPosts.ts" "src/utils/readPosts.ts" "src/components/Feed.tsx" "src/pages/Home.tsx")
+    assert_eq "hooks,utils" "$result" "4 areas → first two 'hooks,utils'"
 end
 
 # Test: Description generation
@@ -137,6 +141,14 @@ function test_type_detection
     # Test 6: README file
     set -l result (_gc_detect_type "modified" "README.md" "")
     assert_eq "docs" "$result" "README.md → type 'docs'"
+
+    # Test 7: Mixed new + modify → feat
+    set -l result (_gc_detect_type "mixed" "hooks/use.ts components/button.tsx" "")
+    assert_eq "feat" "$result" "Mixed new+modify → type 'feat'"
+
+    # Test 8: Mixed new + modify with fix in diff → fix
+    set -l result (_gc_detect_type "mixed" "hooks/use.ts" "fix the bug")
+    assert_eq "fix" "$result" "Mixed with fix in diff → type 'fix'"
 end
 
 # Run all tests

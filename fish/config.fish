@@ -1,6 +1,11 @@
 # Fish Shell Configuration
 
 # ===========================
+# Load functions from dotfiles
+# ===========================
+set -p fish_function_path ~/projects/dotfiles/functions
+
+# ===========================
 # PATH Deduplication Function
 # ===========================
 function dedupe_path
@@ -104,33 +109,6 @@ end
 # Final PATH Cleanup
 # ===========================
 dedupe_path
-
-# ===========================
-# Git Commit Helper Function
-# ===========================
-function gc
-    if test (count $argv) -eq 0
-        set_color yellow
-        echo "Usage: "
-        set_color normal
-        echo "  gc <type> <message>"
-        echo ""
-        set_color yellow
-        echo "Types:"
-        set_color normal
-        set_color green; echo -n "  add"; set_color normal; echo "      - Add new feature/file"
-        set_color red; echo -n "  rm"; set_color normal; echo "       - Remove file/feature"
-        set_color blue; echo -n "  chore"; set_color normal; echo "    - Maintenance task"
-        set_color magenta; echo -n "  fix"; set_color normal; echo "      - Bug fix"
-        set_color cyan; echo -n "  feat"; set_color normal; echo "     - New feature"
-        set_color white; echo -n "  docs"; set_color normal; echo "     - Documentation"
-        set_color yellow; echo -n "  style"; set_color normal; echo "    - Code style/formatting"
-        set_color green; echo -n "  refactor"; set_color normal; echo " - Code refactoring"
-        set_color blue; echo -n "  test"; set_color normal; echo "     - Add/update tests"
-        return 1
-    end
-    git commit -m "$argv[1]: $argv[2..-1]"
-end
 
 # ===========================
 # Yarn/Node Aliases

@@ -99,7 +99,17 @@ function _gc_detect_type -a change_type files_lower diff_content
         return
     end
 
-    # Modified or mixed - smart detect from diff content and files
+    # Mixed: new files + modifications → default to feat unless diff suggests otherwise
+    if test "$change_type" = "mixed"
+        if string match -qr '(fix|bug|error|issue|patch|correct|crash|fail)' -- $diff_content
+            echo "fix"
+        else
+            echo "feat"
+        end
+        return
+    end
+
+    # Modified only - smart detect from diff content and files
     if string match -qr '(fix|bug|error|issue|patch|correct|crash|fail)' -- $diff_content
         echo "fix"
     else if string match -qr '(refactor|rename|move|extract|restructur)' -- $diff_content
@@ -133,13 +143,17 @@ function gc --description "Git commit with Conventional Commits message"
                 set breaking true
             case -d --debug
                 set debug true
+            case -v --version
+                echo "gc version 1.1.0"
+                return 0
             case -h --help
-                echo "Usage: gc [-b|--breaking] [-d|--debug]"
+                echo "Usage: gc [-b|--breaking] [-d|--debug] [-v|--version]"
                 echo "Auto-generates a Conventional Commits message"
                 echo ""
                 echo "Options:"
                 echo "  -b, --breaking  Mark as breaking change (adds !)"
                 echo "  -d, --debug     Show debug info (scopes, file_names, etc.)"
+                echo "  -v, --version   Show version number"
                 echo ""
                 echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore"
                 return 0
@@ -190,6 +204,9 @@ function gc --description "Git commit with Conventional Commits message"
         set change_type "deleted"
     else if test -n "$added" -a -z "$modified" -a -z "$deleted"
         set change_type "added"
+    else if test -n "$added"
+        # Mixed: new files + modifications → treat as feature addition
+        set change_type "mixed"
     end
     set -l commit_type (_gc_detect_type $change_type $files_lower $diff_content)
 
