@@ -13,6 +13,8 @@ function _gc_extract_scopes
             end
             # Found a meaningful scope
             set -l scope_lower (string lower -- $part)
+            # Strip parentheses from Next.js route groups like (app), (auth)
+            set scope_lower (string replace -r '^\((.+)\)$' '$1' -- $scope_lower)
             if not contains -- $scope_lower $scopes
                 set scopes $scopes $scope_lower
             end
