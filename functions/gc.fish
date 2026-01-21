@@ -146,7 +146,7 @@ function gc --description "Git commit with Conventional Commits message"
             case -d --debug
                 set debug true
             case -v --version
-                echo "gc version 1.1.0"
+                echo "gc version 1.2.0"
                 return 0
             case -h --help
                 echo "Usage: gc [-b|--breaking] [-d|--debug] [-v|--version]"
