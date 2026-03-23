@@ -30,30 +30,70 @@ function _gc_extract_scopes
     end
 end
 
-# Helper: Generate description from file paths
+# Helper: Extract filename preserving original casing
+function _gc_preserve_filename
+    set -l f $argv[1]
+    set -l basename (string replace -r '.*/' '' -- $f)
+    set -l name (string replace -r '\.[^.]+$' '' -- $basename)
+    set name (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $name)
+    echo $name
+end
+
+# Helper: Detect verb from commit type and diff content
+function _gc_detect_verb -a commit_type diff_content
+    # Priority 1: scan diff for action keywords
+    if string match -qr '(rename|move)' -- $diff_content
+        echo "rename"; return
+    end
+    if string match -qr '\bextract\b' -- $diff_content
+        echo "extract"; return
+    end
+    if string match -qr '(add|create|new)' -- $diff_content
+        echo "add"; return
+    end
+    if string match -qr '(delete|remove)' -- $diff_content
+        echo "remove"; return
+    end
+    if string match -qr '(fix|bug|error)' -- $diff_content
+        echo "fix"; return
+    end
+    if string match -qr '(update|change|modify)' -- $diff_content
+        echo "update"; return
+    end
+
+    # Priority 2: type-based default verb
+    switch $commit_type
+        case feat;     echo "add"
+        case fix;      echo "fix"
+        case refactor; echo "update"
+        case chore;    echo "remove"
+        case docs;     echo "update"
+        case test;     echo "add"
+        case style;    echo "format"
+        case perf;     echo "optimize"
+        case '*';      echo "update"
+    end
+end
+
+# Helper: Generate description from verb + file paths
 function _gc_generate_description
-    set -l files $argv
+    set -l verb $argv[1]
+    set -l files $argv[2..-1]
     set -l file_count (count $files)
 
     if test $file_count -eq 1
-        # Single file: use filename
-        set -l basename (string replace -r '.*/' '' -- $files[1])
-        set -l desc (string replace -r '\.[^.]+$' '' -- $basename)
-        set desc (string lower -- $desc)
-        set desc (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $desc)
-        echo $desc
+        set -l name (_gc_preserve_filename $files[1])
+        echo "$verb $name"
         return
     end
 
-    # Multiple files: extract meaningful names
+    # Multiple files: extract meaningful names (preserving case)
     set -l file_names
     for f in $files
-        set -l basename (string replace -r '.*/' '' -- $f)
-        set -l name (string replace -r '\.[^.]+$' '' -- $basename)
-        set name (string lower -- $name)
-        set name (string replace -r '(\.test|\.spec|_test|_spec)$' '' -- $name)
+        set -l name (_gc_preserve_filename $f)
+        set -l name_lower (string lower -- $name)
         # Skip generic names
-        if test "$name" != "index" -a "$name" != "types" -a "$name" != "utils"
+        if test "$name_lower" != "index" -a "$name_lower" != "types" -a "$name_lower" != "utils"
             if not contains -- $name $file_names
                 set file_names $file_names $name
             end
@@ -64,20 +104,15 @@ function _gc_generate_description
     set -l scopes (_gc_extract_scopes $files | string split ',')
 
     if test (count $file_names) -eq 1
-        echo "$file_names[1]"
+        echo "$verb $file_names[1]"
     else if test (count $file_names) -eq 2
-        echo "$file_names[1] and $file_names[2]"
+        echo "$verb $file_names[1] and $file_names[2]"
     else if test (count $file_names) -gt 2
-        if test (count $scopes) -eq 1
-            echo "$scopes[1] updates"
-        else
-            echo "$file_names[1] and $file_names[2]"
-        end
+        echo "$verb $file_names[1] and $file_names[2]"
     else if test (count $scopes) -gt 0
-        # All generic names, use scope-based description
-        echo "$scopes[1] updates"
+        echo "$verb $scopes[1] updates"
     else
-        echo "multiple files"
+        echo "$verb multiple files"
     end
 end
 
@@ -131,7 +166,7 @@ function _gc_detect_type -a change_type files_lower diff_content
     else if string match -qr '(chore|cleanup|maintain|updat|bump|version)' -- $diff_content
         echo "chore"
     else
-        echo "refactor"
+        echo "chore"
     end
 end
 
@@ -146,7 +181,7 @@ function gc --description "Git commit with Conventional Commits message"
             case -d --debug
                 set debug true
             case -v --version
-                echo "gc version 1.2.0"
+                echo "gc version 2.0.0"
                 return 0
             case -h --help
                 echo "Usage: gc [-b|--breaking] [-d|--debug] [-v|--version]"
@@ -212,9 +247,10 @@ function gc --description "Git commit with Conventional Commits message"
     end
     set -l commit_type (_gc_detect_type $change_type $files_lower $diff_content)
 
-    # Extract scope and description using helpers
+    # Extract scope, detect verb, and generate description
     set -l scope (_gc_extract_scopes $all_files)
-    set -l description (_gc_generate_description $all_files)
+    set -l verb (_gc_detect_verb $commit_type $diff_content)
+    set -l description (_gc_generate_description $verb $all_files)
 
     # Debug output
     if test "$debug" = true
@@ -224,6 +260,7 @@ function gc --description "Git commit with Conventional Commits message"
         echo "  files: $all_files"
         echo "  diff preview: "(string sub -l 100 -- $diff_content)"..."
         echo "  commit_type: $commit_type"
+        echo "  verb: $verb"
         echo "  scope: $scope"
         echo "  description: $description"
         set_color normal

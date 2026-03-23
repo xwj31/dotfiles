@@ -41,6 +41,46 @@ function assert_not_eq -a unexpected actual test_name
     end
 end
 
+# Test: Preserve filename
+function test_preserve_filename
+    echo ""
+    set_color --bold
+    echo "=== Preserve Filename Tests ==="
+    set_color normal
+
+    assert_eq "PpuUsageController" (_gc_preserve_filename "app/Http/Controllers/PpuUsageController.php") "PascalCase preserved"
+    assert_eq "useReadPosts" (_gc_preserve_filename "src/hooks/useReadPosts.ts") "camelCase preserved"
+    assert_eq "ppu_usage" (_gc_preserve_filename "lib/ppu_usage.rb") "snake_case preserved"
+    assert_eq "PpuUsageController" (_gc_preserve_filename "tests/PpuUsageController.test.php") "Test suffix stripped, case preserved"
+    assert_eq "client" (_gc_preserve_filename "src/api/client.ts") "Lowercase filename stays lowercase"
+end
+
+# Test: Detect verb
+function test_detect_verb
+    echo ""
+    set_color --bold
+    echo "=== Detect Verb Tests ==="
+    set_color normal
+
+    # Context-aware: diff keyword detection
+    assert_eq "rename" (_gc_detect_verb "refactor" "rename the class to something") "rename keyword -> rename"
+    assert_eq "extract" (_gc_detect_verb "refactor" "extract method from handler") "extract keyword -> extract"
+    assert_eq "add" (_gc_detect_verb "chore" "add new configuration entry") "add keyword overrides type default"
+    assert_eq "remove" (_gc_detect_verb "feat" "delete the old handler") "delete keyword -> remove"
+    assert_eq "fix" (_gc_detect_verb "chore" "fix the broken handler") "fix keyword overrides type default"
+    assert_eq "update" (_gc_detect_verb "feat" "update the component props") "update keyword overrides type default"
+
+    # Type-based defaults (no keyword match)
+    assert_eq "add" (_gc_detect_verb "feat" "plain stuff here") "feat default -> add"
+    assert_eq "fix" (_gc_detect_verb "fix" "plain stuff here") "fix default -> fix"
+    assert_eq "update" (_gc_detect_verb "refactor" "plain stuff here") "refactor default -> update"
+    assert_eq "remove" (_gc_detect_verb "chore" "plain stuff here") "chore default -> remove"
+    assert_eq "update" (_gc_detect_verb "docs" "plain stuff here") "docs default -> update"
+    assert_eq "add" (_gc_detect_verb "test" "plain stuff here") "test default -> add"
+    assert_eq "format" (_gc_detect_verb "style" "plain stuff here") "style default -> format"
+    assert_eq "optimize" (_gc_detect_verb "perf" "plain stuff here") "perf default -> optimize"
+end
+
 # Test: Scope extraction
 function test_scope_extraction
     echo ""
@@ -84,31 +124,26 @@ function test_description_generation
     echo "=== Description Generation Tests ==="
     set_color normal
 
-    # Test 1: Single file
-    set -l result (_gc_generate_description "src/api/client.ts")
-    assert_eq "client" "$result" "Single file: client.ts → desc 'client'"
+    # Single file with verb, PascalCase preserved
+    assert_eq "update PpuUsageController" (_gc_generate_description "update" "app/Http/Controllers/PpuUsageController.php") "Single file: verb + PascalCase name"
 
-    # Test 2: Two files
-    set -l result (_gc_generate_description "src/routes/feed.ts" "src/routes/users.ts")
-    assert_eq "feed and users" "$result" "Two files → 'feed and users'"
+    # Two files with verb
+    assert_eq "update PpuUsageController and PpuUsageUpload" (_gc_generate_description "update" "app/Http/Controllers/PpuUsageController.php" "app/Http/Resources/PpuUsageUpload.php") "Two files: verb + both names"
 
-    # Test 3: Multiple files different areas
-    set -l result (_gc_generate_description "src/pages/Settings.tsx" "workers/api/feed.ts")
-    assert_eq "settings and feed" "$result" "Different areas → both names"
+    # camelCase preserved
+    assert_eq "add useReadPosts" (_gc_generate_description "add" "src/hooks/useReadPosts.ts") "camelCase preserved"
 
-    # Test 4: Files with generic names (index, types, utils)
-    set -l result (_gc_generate_description "src/types/index.ts" "src/utils/index.ts")
-    # Should fall back to scope-based since all names are generic
-    # This depends on scope context, so we test it doesn't return empty
-    assert_not_eq "" "$result" "Generic names should still produce description"
+    # Generic names filtered, specific ones kept
+    assert_eq "update Settings" (_gc_generate_description "update" "src/pages/Settings.tsx" "src/types/index.ts") "Generic filtered, specific kept with case"
 
-    # Test 5: Mix of generic and specific
-    set -l result (_gc_generate_description "src/pages/Settings.tsx" "src/types/index.ts")
-    assert_eq "settings" "$result" "Mix: Settings.tsx + index.ts → 'settings'"
+    # Test suffix stripped
+    assert_eq "add client" (_gc_generate_description "add" "src/api/client.test.ts") "Test suffix stripped"
 
-    # Test 6: Test file naming
-    set -l result (_gc_generate_description "src/api/client.test.ts")
-    assert_eq "client" "$result" "Test file: client.test.ts → 'client'"
+    # 3+ files: first two names
+    assert_eq "update PpuUsageController and PpuUsageUpload" (_gc_generate_description "update" "app/Http/Controllers/PpuUsageController.php" "app/Http/Resources/PpuUsageUpload.php" "app/Http/Resources/PpuAgreement.php") "3+ files: verb + first two names"
+
+    # All generic names: scope-based fallback with verb
+    assert_eq "update types updates" (_gc_generate_description "update" "src/types/index.ts" "src/utils/index.ts") "All generic: verb + scope fallback"
 end
 
 # Test: Type detection
@@ -149,6 +184,10 @@ function test_type_detection
     # Test 8: Mixed new + modify with fix in diff → fix
     set -l result (_gc_detect_type "mixed" "hooks/use.ts" "fix the bug")
     assert_eq "fix" "$result" "Mixed with fix in diff → type 'fix'"
+
+    # Test 9: Modified with no keyword match defaults to chore
+    set -l result (_gc_detect_type "modified" "" "no special keywords here just plain code")
+    assert_eq "chore" "$result" "Modified with no keyword match defaults to chore"
 end
 
 # Run all tests
@@ -158,6 +197,8 @@ function run_tests
     echo ""
     set_color normal
 
+    test_preserve_filename
+    test_detect_verb
     test_scope_extraction
     test_description_generation
     test_type_detection
