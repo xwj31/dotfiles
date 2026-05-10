@@ -147,3 +147,7 @@ alias ab "adb reverse tcp:8081 tcp:8081"
 # Laravel Sail
 # ===========================
 alias sail='bash vendor/bin/sail'
+
+# Added by OrbStack: command-line tools and integration
+# This won't be added again if you remove it.
+source ~/.orbstack/shell/init2.fish 2>/dev/null || :
